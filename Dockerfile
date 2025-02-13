@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENTRYPOINT [ "python", "homeassistant-entity-renamer.py" ]
+ENTRYPOINT [ "python", "server.py" ]

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Entity & Device Renamer</title>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+  <style>
+    body { margin: 20px; }
+    .form-control { font-size: 1.1em; }
+    .card { margin-bottom: 20px; }
+    .table th, .table td { vertical-align: middle; }
+    @media (max-width: 767px) {
+      .left-col, .right-col { max-width: 100%; flex: 0 0 100%; }
+    }
+  </style>
+</head>
+<body>
+<div class="container-fluid">
+  <h1 class="mb-4 text-center">Home Assistant Entity & Device Renamer</h1>
+  <div class="row">
+    <!-- Left Column: Input Forms -->
+    <div class="col-md-4 left-col">
+      <div class="card">
+        <div class="card-header">Entity Settings</div>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="search">Entity Search Regex:</label>
+            <input type="text" id="search" class="form-control" placeholder="Enter entity search regex">
+          </div>
+          <div class="form-group">
+            <label for="replace">Entity Replace String:</label>
+            <input type="text" id="replace" class="form-control" placeholder="Enter entity replace string">
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Friendly Name Settings</div>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="fname_search">Friendly Name Match Regex:</label>
+            <input type="text" id="fname_search" class="form-control" placeholder="Enter friendly name match regex">
+          </div>
+          <div class="form-group">
+            <label for="fname_replace">Friendly Name Replace String:</label>
+            <input type="text" id="fname_replace" class="form-control" placeholder="Enter friendly name replace string">
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Device Name Settings</div>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="dev_search">Device Name Match Regex:</label>
+            <input type="text" id="dev_search" class="form-control" placeholder="Enter device name match regex">
+          </div>
+          <div class="form-group">
+            <label for="dev_replace">Device Name Replace String:</label>
+            <input type="text" id="dev_replace" class="form-control" placeholder="Enter device name replace string">
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Filters</div>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="area">Area Filter:</label>
+            <input type="text" id="area" class="form-control" placeholder="Enter area name (optional)">
+          </div>
+          <div class="form-group">
+            <label for="floor">Floor Filter:</label>
+            <input type="text" id="floor" class="form-control" placeholder="Enter floor name (optional)">
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Exclusions</div>
+        <div class="card-body">
+          <div class="input-group mb-3" id="manualExclusions">
+            <input type="text" class="form-control exclude" placeholder="Exclusion regex">
+            <div class="input-group-append">
+              <button id="addManualExclusion" class="btn btn-outline-secondary" type="button">Add</button>
+            </div>
+          </div>
+          <h5>Current Exclusions:</h5>
+          <ul id="addedExclusionsList" class="list-group"></ul>
+        </div>
+      </div>
+    </div>
+    <!-- Right Column: Preview and Apply -->
+    <div class="col-md-8 right-col">
+      <div class="card">
+        <div class="card-header">Preview Results</div>
+        <div class="card-body">
+          <table class="table table-bordered table-striped" id="results">
+            <thead>
+              <tr>
+                <th>Friendly Name</th>
+                <th>Entity ID</th>
+                <th>Device Name</th>
+                <th>New Entity ID</th>
+                <th>New Friendly Name</th>
+                <th>New Device Name</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <button id="apply" class="btn btn-primary btn-lg btn-block mb-3">Apply Rename</button>
+      <div id="message"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var addedExclusions = [];
+function updateAddedExclusionsUI(){
+  var ul = document.getElementById('addedExclusionsList');
+  ul.innerHTML = '';
+  addedExclusions.forEach((ex, idx) => {
+    var li = document.createElement('li');
+    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+    li.textContent = ex;
+    var rm = document.createElement('button');
+    rm.className = 'btn btn-sm btn-danger';
+    rm.textContent = 'Remove';
+    rm.onclick = function(){
+      addedExclusions.splice(idx, 1);
+      updateAddedExclusionsUI();
+      fetchResults();
+    };
+    li.appendChild(rm);
+    ul.appendChild(li);
+  });
+}
+document.getElementById('addManualExclusion').addEventListener('click', function(){
+  var inp = document.querySelector('#manualExclusions .exclude');
+  if(inp.value && !addedExclusions.includes(inp.value)){
+    addedExclusions.push(inp.value);
+    inp.value = '';
+    updateAddedExclusionsUI();
+    fetchResults();
+  }
+});
+function addExclusion(entityId){
+  if(!addedExclusions.includes(entityId)){
+    addedExclusions.push(entityId);
+    updateAddedExclusionsUI();
+    fetchResults();
+  }
+}
+function fetchResults(){
+  var search = document.getElementById('search').value;
+  var replace = document.getElementById('replace').value;
+  var fname_search = document.getElementById('fname_search').value;
+  var fname_replace = document.getElementById('fname_replace').value;
+  var dev_search = document.getElementById('dev_search').value;
+  var dev_replace = document.getElementById('dev_replace').value;
+  var area = document.getElementById('area').value;
+  var floor = document.getElementById('floor').value;
+  var manualInputs = Array.from(document.getElementsByClassName('exclude')).map(e => e.value).filter(v => v);
+  var allExclusions = manualInputs.concat(addedExclusions);
+  var params = new URLSearchParams();
+  if(search) params.append('search', search);
+  if(replace) params.append('replace', replace);
+  if(fname_search) params.append('fname_search', fname_search);
+  if(fname_replace) params.append('fname_replace', fname_replace);
+  if(dev_search) params.append('dev_search', dev_search);
+  if(dev_replace) params.append('dev_replace', dev_replace);
+  if(area) params.append('area', area);
+  if(floor) params.append('floor', floor);
+  allExclusions.forEach(e => params.append('exclude', e));
+  fetch('/search?' + params.toString())
+    .then(r => r.json())
+    .then(data => {
+      var tbody = document.querySelector('#results tbody');
+      tbody.innerHTML = '';
+      data.forEach(row => {
+        var tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.friendly_name}</td>
+                        <td>${row.entity_id}</td>
+                        <td>${row.device_name}</td>
+                        <td>${row.new_entity_id}</td>
+                        <td>${row.new_friendly_name}</td>
+                        <td>${row.new_device_name}</td>`;
+        var td = document.createElement('td');
+        var btn = document.createElement('button');
+        btn.className = 'btn btn-sm btn-warning';
+        btn.textContent = 'Exclude';
+        btn.onclick = function(){ addExclusion(row.entity_id); };
+        if(addedExclusions.includes(row.entity_id)){
+          btn.disabled = true;
+          btn.textContent = 'Excluded';
+        }
+        td.appendChild(btn);
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      });
+    });
+}
+['search','replace','fname_search','fname_replace','dev_search','dev_replace','area','floor'].forEach(id => {
+  document.getElementById(id).addEventListener('input', fetchResults);
+});
+document.getElementById('manualExclusions').addEventListener('input', fetchResults);
+
+document.getElementById('apply').addEventListener('click', function(){
+  var payload = {
+    search: document.getElementById('search').value,
+    replace: document.getElementById('replace').value,
+    fname_search: document.getElementById('fname_search').value,
+    fname_replace: document.getElementById('fname_replace').value,
+    dev_search: document.getElementById('dev_search').value,
+    dev_replace: document.getElementById('dev_replace').value,
+    area: document.getElementById('area').value,
+    floor: document.getElementById('floor').value,
+    exclude: Array.from(document.getElementsByClassName('exclude')).map(e => e.value).filter(v => v)
+             .concat(addedExclusions)
+  };
+  // First, do a dry run (no confirm parameter)
+  fetch('/apply', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if(data.dry_run){
+      // Show confirmation dialog with dry run summary message
+      if(confirm(data.message + "\n\nPress OK to confirm and apply changes.")){
+        // User confirmed: send request with confirm=true query parameter
+        fetch('/apply?confirm=true', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(result => {
+          var msg = document.getElementById('message');
+          msg.innerHTML = '<h3>Apply Results:</h3>';
+          msg.innerHTML += '<h4>Entities</h4>';
+          result.entities.forEach(item => {
+            msg.innerHTML += `<p>${item.entity_id} → ${item.new_entity_id}, ${item.new_friendly_name}: ${item.status}${item.error ? (' ('+item.error+')') : ''}${item.message ? (' ('+item.message+')') : ''}</p>`;
+          });
+          msg.innerHTML += '<h4>Devices</h4>';
+          result.devices.forEach(item => {
+            msg.innerHTML += `<p>Device ${item.device_id} → ${item.new_device_name}: ${item.status}${item.error ? (' ('+item.error+')') : ''}</p>`;
+          });
+        });
+      }
+    }
+  });
+});
+window.onload = fetchResults;
+</script>
+</div>
+</body>
+</html>
